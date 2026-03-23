@@ -5,9 +5,8 @@ pragma solidity ^0.8.20;
  * @title IReactiveService
  * @notice Interface for Somnia's on-chain Reactivity service.
  *         ReactiveWill emits events that external Somnia Reactivity
- *         subscriptions (created via the @somnia-chain/reactivity SDK)
+ *         subscriptions (created via the somnia-chain/reactivity SDK)
  *         listen to and forward to off-chain subscribers in real time.
- *
  *         For on-chain reactivity (contract-to-contract), a handler
  *         contract implementing _onEvent() receives the forwarded call.
  */

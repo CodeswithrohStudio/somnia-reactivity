@@ -35,7 +35,7 @@ Why real-time matters here: beneficiaries open the dashboard and walk away. They
 ## Local setup
 
 ```bash
-git clone https://github.com/your-handle/willeth-somnia-reactive
+git clone https://github.com/CodeswithrohStudio/somnia-reactivity
 cd willeth-somnia-reactive
 npm install
 
