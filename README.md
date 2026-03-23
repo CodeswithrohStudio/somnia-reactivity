@@ -45,7 +45,7 @@ cp .env.example .env
 
 # Compile and deploy the contract to Somnia Testnet
 npx hardhat compile
-npx hardhat run scripts/deploy.ts --network somnia
+TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/deploy.ts --network somnia
 
 # Copy the deployed address into .env:
 # VITE_WILL_CONTRACT_ADDRESS=0x...
@@ -62,7 +62,7 @@ You will need STT (Somnia Testnet tokens) in your deployer wallet. Get them from
 
 | Contract | Address |
 |---|---|
-| ReactiveWill | [add after deployment] |
+| ReactiveWill | [`0x44094Ac481A6dA3F815589Fc7E6d13994565f9C8`](https://shannon-explorer.somnia.network/address/0x44094Ac481A6dA3F815589Fc7E6d13994565f9C8) |
 
 Network: Somnia Testnet · Chain ID: 50312
 Explorer: https://shannon-explorer.somnia.network

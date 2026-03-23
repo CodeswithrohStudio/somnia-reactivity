@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.ts --network somnia",
+    "deploy": "TS_NODE_PROJECT=tsconfig.hardhat.json hardhat run scripts/deploy.ts --network somnia",
     "test": "hardhat test"
   },
   "dependencies": {
