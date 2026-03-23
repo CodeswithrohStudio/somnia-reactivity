@@ -82,20 +82,6 @@ Explorer: https://shannon-explorer.somnia.network
 
 ---
 
-## Demo video checklist
-
-The demo video must show:
-
-1. Creating a will — depositing STT and setting beneficiaries on Somnia Testnet
-2. The live reactive dashboard open in a **second browser tab** (no wallet needed there)
-3. Triggering will execution from the first tab (or from the contract directly)
-4. Watching `BeneficiaryDashboard` update **in real time with zero refresh** — cards flip WAITING → INCOMING → RECEIVED with amounts
-5. The `WillExecutionFeed` showing each event slide in as it arrives
-
-Step 4 is the Somnia moment. That is what judges are watching for.
-
----
-
 ## Project structure
 
 ```
