@@ -28,7 +28,7 @@ Why real-time matters here: beneficiaries open the dashboard and walk away. They
 
 ## Live demo
 
-[Deployed URL — add after deployment]
+🔗 **[https://willeth-somnia-reactive.vercel.app](https://willeth-somnia-reactive.vercel.app)**
 
 ---
 
