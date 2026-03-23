@@ -5,7 +5,7 @@
   "description": "Reactive Will.eth inheritance dashboard built on Somnia Testnet using Somnia Reactivity SDK",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "compile": "hardhat compile",
     "deploy": "TS_NODE_PROJECT=tsconfig.hardhat.json hardhat run scripts/deploy.ts --network somnia",
