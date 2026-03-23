@@ -10,39 +10,66 @@
 
 import { useState } from "react";
 import { parseEther, parseAbi, isAddress } from "viem";
-import { useWalletClient, usePublicClient, useAccount } from "wagmi";
-import { WILL_CONTRACT_ADDRESS } from "../config/somnia";
+import { useWalletClient, usePublicClient, useAccount, useChainId, useSwitchChain } from "wagmi";
+import { WILL_CONTRACT_ADDRESS, SOMNIA_TESTNET } from "../config/somnia";
 
 const WILL_WRITE_ABI = parseAbi([
   "function deposit() external payable",
   "function setBeneficiaries(address[] wallets, uint256[] bps) external",
 ]);
 
-interface Heir {
-  address: string;
-  bps: string; // basis points string, e.g. "5000" = 50%
+const SOMNIA_CHAIN_ID = SOMNIA_TESTNET.id; // 50312
+
+/** Evenly splits 10000 bps across n heirs. Remainder goes to the last. */
+function computeBps(count: number): number[] {
+  if (count === 0) return [];
+  const base = Math.floor(10000 / count);
+  const remainder = 10000 - base * count;
+  return Array.from({ length: count }, (_, i) =>
+    i === count - 1 ? base + remainder : base
+  );
 }
 
 export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
   const [depositAmount, setDepositAmount] = useState("");
-  const [heirs, setHeirs] = useState<Heir[]>([{ address: "", bps: "" }]);
+  const [heirAddresses, setHeirAddresses] = useState<string[]>([""]);
   const [isDepositing, setIsDepositing] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   const [isSettingHeirs, setIsSettingHeirs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const contractNotSet = WILL_CONTRACT_ADDRESS === "0x0000000000000000000000000000000000000000";
+  const contractNotSet =
+    WILL_CONTRACT_ADDRESS === "0x0000000000000000000000000000000000000000";
 
-  const totalBps = heirs.reduce((sum, h) => sum + (parseInt(h.bps) || 0), 0);
+  const isWrongChain = chainId !== SOMNIA_CHAIN_ID;
+
+  // Auto-computed allocations — always sums to exactly 10000
+  const bpsAllocations = computeBps(heirAddresses.length);
+
+  /** Switch to Somnia Testnet then run the action. */
+  const ensureCorrectChain = async () => {
+    if (isWrongChain) {
+      setIsSwitching(true);
+      try {
+        await switchChainAsync({ chainId: SOMNIA_CHAIN_ID });
+      } finally {
+        setIsSwitching(false);
+      }
+    }
+  };
 
   const handleDeposit = async () => {
     if (!walletClient || !publicClient) { setError("Connect wallet."); return; }
     setError(null); setSuccess(null); setIsDepositing(true);
     try {
+      await ensureCorrectChain();
       const hash = await walletClient.writeContract({
         address: WILL_CONTRACT_ADDRESS,
         abi: WILL_WRITE_ABI,
@@ -55,7 +82,7 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
       onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg.slice(0, 160));
+      setError(msg.slice(0, 200));
     } finally {
       setIsDepositing(false);
     }
@@ -63,14 +90,15 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
 
   const handleSetHeirs = async () => {
     if (!walletClient || !publicClient) { setError("Connect wallet."); return; }
-    if (totalBps !== 10000) { setError("Basis points must sum to 10000."); return; }
-    const invalidAddr = heirs.find((h) => !isAddress(h.address));
-    if (invalidAddr) { setError(`Invalid address: ${invalidAddr.address}`); return; }
+    const invalid = heirAddresses.find((a) => !isAddress(a));
+    if (invalid) { setError(`Invalid address: ${invalid}`); return; }
+    if (heirAddresses.length === 0) { setError("Add at least one beneficiary."); return; }
 
     setError(null); setSuccess(null); setIsSettingHeirs(true);
     try {
-      const wallets = heirs.map((h) => h.address as `0x${string}`);
-      const bpsArr = heirs.map((h) => BigInt(parseInt(h.bps)));
+      await ensureCorrectChain();
+      const wallets = heirAddresses.map((a) => a as `0x${string}`);
+      const bpsArr = bpsAllocations.map((b) => BigInt(b));
 
       const hash = await walletClient.writeContract({
         address: WILL_CONTRACT_ADDRESS,
@@ -83,15 +111,19 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
       onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg.slice(0, 160));
+      setError(msg.slice(0, 200));
     } finally {
       setIsSettingHeirs(false);
     }
   };
 
-  const updateHeir = (i: number, field: keyof Heir, value: string) => {
-    setHeirs((prev) => prev.map((h, idx) => (idx === i ? { ...h, [field]: value } : h)));
+  const updateAddress = (i: number, value: string) => {
+    setHeirAddresses((prev) => prev.map((a, idx) => (idx === i ? value : a)));
   };
+
+  const addHeir = () => setHeirAddresses((p) => [...p, ""]);
+  const removeHeir = (i: number) =>
+    setHeirAddresses((p) => p.filter((_, idx) => idx !== i));
 
   if (!isConnected) {
     return (
@@ -111,8 +143,30 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
         </p>
       )}
 
+      {/* Wrong chain banner */}
+      {isWrongChain && (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-950/40 border border-amber-500/40 px-3 py-2">
+          <p className="text-xs text-amber-300">
+            Wrong network — switch to <span className="font-semibold">Somnia Testnet</span> (ID 50312)
+          </p>
+          <button
+            onClick={ensureCorrectChain}
+            disabled={isSwitching}
+            className="shrink-0 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold px-3 py-1 transition-colors disabled:opacity-50"
+          >
+            {isSwitching ? "Switching…" : "Switch"}
+          </button>
+        </div>
+      )}
+
       <p className="text-xs text-zinc-500">
-        Connected: <span className="font-mono text-zinc-300">{address?.slice(0, 6)}…{address?.slice(-4)}</span>
+        Connected:{" "}
+        <span className="font-mono text-zinc-300">
+          {address?.slice(0, 6)}…{address?.slice(-4)}
+        </span>
+        {!isWrongChain && (
+          <span className="ml-2 text-emerald-400">✓ Somnia Testnet</span>
+        )}
       </p>
 
       {/* Deposit */}
@@ -136,34 +190,31 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </div>
 
-      {/* Beneficiaries */}
+      {/* Beneficiaries — auto BPS */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-zinc-300">Beneficiaries</label>
-          <span className={`text-xs font-semibold ${totalBps === 10000 ? "text-emerald-400" : "text-amber-400"}`}>
-            {totalBps}/10000 bps
+          <span className="text-xs text-zinc-500">
+            Split equally · {heirAddresses.length} heir{heirAddresses.length !== 1 ? "s" : ""}
           </span>
         </div>
 
-        {heirs.map((h, i) => (
-          <div key={i} className="flex gap-2">
+        {heirAddresses.map((addr, i) => (
+          <div key={i} className="flex gap-2 items-center">
             <input
               type="text"
               placeholder="0x… address"
-              value={h.address}
-              onChange={(e) => updateHeir(i, "address", e.target.value)}
+              value={addr}
+              onChange={(e) => updateAddress(i, e.target.value)}
               className="flex-1 rounded-lg bg-zinc-900 border border-zinc-600 px-3 py-2 text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
             />
-            <input
-              type="number"
-              placeholder="bps"
-              value={h.bps}
-              onChange={(e) => updateHeir(i, "bps", e.target.value)}
-              className="w-20 rounded-lg bg-zinc-900 border border-zinc-600 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
-            />
-            {heirs.length > 1 && (
+            {/* Read-only auto-calculated share */}
+            <div className="shrink-0 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-emerald-400 font-semibold min-w-[64px] text-center">
+              {((bpsAllocations[i] / 100)).toFixed(1)}%
+            </div>
+            {heirAddresses.length > 1 && (
               <button
-                onClick={() => setHeirs((p) => p.filter((_, idx) => idx !== i))}
+                onClick={() => removeHeir(i)}
                 className="text-zinc-500 hover:text-red-400 transition-colors text-sm px-1"
               >
                 ✕
@@ -173,7 +224,7 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
         ))}
 
         <button
-          onClick={() => setHeirs((p) => [...p, { address: "", bps: "" }])}
+          onClick={addHeir}
           className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
         >
           + Add beneficiary
@@ -181,7 +232,7 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
 
         <button
           onClick={handleSetHeirs}
-          disabled={isSettingHeirs || totalBps !== 10000 || contractNotSet}
+          disabled={isSettingHeirs || contractNotSet || heirAddresses.some((a) => !a)}
           className="w-full rounded-lg bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 px-4 py-2.5 text-sm font-semibold text-white transition-colors"
         >
           {isSettingHeirs ? "Saving…" : "Save Beneficiaries"}
