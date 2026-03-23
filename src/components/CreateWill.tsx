@@ -12,6 +12,21 @@ import { useState } from "react";
 import { parseEther, parseAbi, isAddress } from "viem";
 import { useWalletClient, usePublicClient, useAccount, useChainId, useSwitchChain } from "wagmi";
 import { WILL_CONTRACT_ADDRESS, SOMNIA_TESTNET } from "../config/somnia";
+import type { Chain } from "viem";
+
+// Viem-compatible chain object for writeContract's `chain` param
+const SOMNIA_CHAIN: Chain = {
+  id: SOMNIA_TESTNET.id,
+  name: SOMNIA_TESTNET.name,
+  nativeCurrency: { ...SOMNIA_TESTNET.nativeCurrency },
+  rpcUrls: {
+    default: { http: [SOMNIA_TESTNET.rpcUrls.default.http[0]] },
+  },
+  blockExplorers: {
+    default: { ...SOMNIA_TESTNET.blockExplorers.default },
+  },
+  testnet: true,
+};
 
 const WILL_WRITE_ABI = parseAbi([
   "function deposit() external payable",
@@ -53,15 +68,14 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
   // Auto-computed allocations — always sums to exactly 10000
   const bpsAllocations = computeBps(heirAddresses.length);
 
-  /** Switch to Somnia Testnet then run the action. */
+  /** Manually switch chain (banner button). writeContract handles it automatically too. */
   const ensureCorrectChain = async () => {
-    if (isWrongChain) {
-      setIsSwitching(true);
-      try {
-        await switchChainAsync({ chainId: SOMNIA_CHAIN_ID });
-      } finally {
-        setIsSwitching(false);
-      }
+    if (!isWrongChain) return;
+    setIsSwitching(true);
+    try {
+      await switchChainAsync({ chainId: SOMNIA_CHAIN_ID });
+    } finally {
+      setIsSwitching(false);
     }
   };
 
@@ -69,12 +83,12 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
     if (!walletClient || !publicClient) { setError("Connect wallet."); return; }
     setError(null); setSuccess(null); setIsDepositing(true);
     try {
-      await ensureCorrectChain();
       const hash = await walletClient.writeContract({
         address: WILL_CONTRACT_ADDRESS,
         abi: WILL_WRITE_ABI,
         functionName: "deposit",
         value: parseEther(depositAmount),
+        chain: SOMNIA_CHAIN, // forces wagmi to switch chain before sending
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setSuccess("Deposit confirmed.");
@@ -96,7 +110,6 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
 
     setError(null); setSuccess(null); setIsSettingHeirs(true);
     try {
-      await ensureCorrectChain();
       const wallets = heirAddresses.map((a) => a as `0x${string}`);
       const bpsArr = bpsAllocations.map((b) => BigInt(b));
 
@@ -105,6 +118,7 @@ export function CreateWill({ onSuccess }: { onSuccess: () => void }) {
         abi: WILL_WRITE_ABI,
         functionName: "setBeneficiaries",
         args: [wallets, bpsArr],
+        chain: SOMNIA_CHAIN, // forces wagmi to switch chain before sending
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setSuccess("Beneficiaries saved.");
