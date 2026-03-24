@@ -65,6 +65,11 @@ export interface ReactiveWillState {
   isConnected: boolean;
   lastCheckIn: number | null;
   refreshWillState: () => Promise<void>;
+  // Latency tracking — set before sending a tx so the hook can measure
+  // the gap between tx submission and the Somnia Reactivity push arriving.
+  markTxSubmitted: () => void;
+  lastEventLatencyMs: number | null;
+  eventCount: number;
 }
 
 // ─── Helper: compute event topic0 from signature ────────────────────────────
@@ -90,9 +95,17 @@ export function useReactiveWill(): ReactiveWillState {
   );
   const [isConnected, setIsConnected] = useState(false);
   const [lastCheckIn, setLastCheckIn] = useState<number | null>(null);
+  const [lastEventLatencyMs, setLastEventLatencyMs] = useState<number | null>(null);
+  const [eventCount, setEventCount] = useState(0);
 
   const sdkRef = useRef<SDK | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  // High-res timestamp set right before a tx is submitted by the caller
+  const txSubmittedAtRef = useRef<number>(0);
+
+  const markTxSubmitted = useCallback(() => {
+    txSubmittedAtRef.current = performance.now();
+  }, []);
 
   // Public client for reading contract state
   const publicClient = createPublicClient({
@@ -131,17 +144,23 @@ export function useReactiveWill(): ReactiveWillState {
         balance: balance as bigint,
       });
 
-      // Initialise beneficiary statuses if not already set
+      // Rebuild the beneficiary map from fresh contract data every time.
+      // Always overwrite address + basisPoints so re-saves are reflected
+      // immediately. Preserve existing reactive status (received/incoming)
+      // unless the will is not yet executed (reset to waiting).
       setBeneficiaryStatuses((prev) => {
-        const next = new Map(prev);
+        const next = new Map<string, BeneficiaryStatus>();
         beneficiaryWallets.forEach((addr, i) => {
-          if (!next.has(addr)) {
-            next.set(addr, {
-              address: addr,
-              basisPoints: Number((allocations as bigint[])[i]),
-              status: isExecuted ? "received" : "waiting",
-            });
-          }
+          const existing = prev.get(addr);
+          next.set(addr, {
+            address: addr,
+            basisPoints: Number((allocations as bigint[])[i]),
+            status: isExecuted ? "received"
+              : existing?.status === "received" || existing?.status === "incoming"
+              ? existing.status
+              : "waiting",
+            receivedAmount: existing?.receivedAmount,
+          });
         });
         return next;
       });
@@ -153,6 +172,13 @@ export function useReactiveWill(): ReactiveWillState {
   // ── Push a new live event to the feed ─────────────────────────────────────
 
   const pushEvent = useCallback((event: LiveEvent) => {
+    // Measure latency from tx submission to Somnia Reactivity push
+    if (txSubmittedAtRef.current > 0) {
+      const latency = Math.round(performance.now() - txSubmittedAtRef.current);
+      setLastEventLatencyMs(latency);
+      txSubmittedAtRef.current = 0;
+    }
+    setEventCount((n) => n + 1);
     setLiveEvents((prev) => [event, ...prev].slice(0, 50));
   }, []);
 
@@ -339,5 +365,8 @@ export function useReactiveWill(): ReactiveWillState {
     isConnected,
     lastCheckIn,
     refreshWillState,
+    markTxSubmitted,
+    lastEventLatencyMs,
+    eventCount,
   };
 }

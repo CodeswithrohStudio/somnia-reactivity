@@ -5,15 +5,20 @@
  * Somnia's real-time capability. Every entry in this feed arrived via
  * a Somnia Reactivity WebSocket push — not from a polling loop or manual
  * refresh. New events slide in from the top the instant they land on-chain.
- * This is the component judges should watch during the demo.
+ * Each row shows a relative "Xs ago" timer that counts up from zero — a
+ * direct visual proof that the event arrived moments after the block landed,
+ * not after a polling interval. This is the component judges should watch
+ * during the demo.
  */
 
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatEther } from "viem";
 import type { LiveEvent } from "../hooks/useReactiveWill";
 
 interface Props {
   events: LiveEvent[];
+  eventCount: number;
 }
 
 const EVENT_STYLES: Record<string, { bg: string; border: string; label: string; dot: string }> = {
@@ -49,19 +54,33 @@ const EVENT_STYLES: Record<string, { bg: string; border: string; label: string; 
   },
 };
 
+/** Ticks every second and returns "Xs ago" or "just now" */
+function useRelativeTime(timestamp: number): string {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.floor((Date.now() - timestamp) / 1000);
+  if (secs < 2) return "just now";
+  if (secs < 60) return `${secs}s ago`;
+  return `${Math.floor(secs / 60)}m ago`;
+}
+
 function EventRow({ event }: { event: LiveEvent }) {
   const style = EVENT_STYLES[event.type] ?? EVENT_STYLES.Deposited;
+  const relativeTime = useRelativeTime(event.timestamp);
 
   const summary = () => {
     const d = event.data as Record<string, bigint | string | number>;
     if (event.type === "WillExecuted") {
-      return `Total: ${formatEther(d.totalAmount as bigint)} STT`;
+      return `Total distributed: ${formatEther(d.totalAmount as bigint)} STT`;
     }
     if (event.type === "BeneficiaryPaid") {
-      return `Heir: ${String(d.heir).slice(0, 6)}…${String(d.heir).slice(-4)} · ${formatEther(d.amount as bigint)} STT`;
+      return `${String(d.heir).slice(0, 6)}…${String(d.heir).slice(-4)} received ${formatEther(d.amount as bigint)} STT`;
     }
     if (event.type === "CheckInMissed") {
-      return `Deadline: ${new Date(Number(d.deadline) * 1000).toLocaleString()}`;
+      return `Deadline was ${new Date(Number(d.deadline) * 1000).toLocaleString()}`;
     }
     if (event.type === "CheckedIn") {
       return `New deadline: ${new Date(Number(d.newDeadline) * 1000).toLocaleString()}`;
@@ -72,7 +91,7 @@ function EventRow({ event }: { event: LiveEvent }) {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: -10, scale: 0.98 }}
+      initial={{ opacity: 0, y: -12, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
@@ -82,43 +101,72 @@ function EventRow({ event }: { event: LiveEvent }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <span className={`text-sm font-semibold ${style.label}`}>{event.type}</span>
-          <span className="text-xs text-zinc-500 tabular-nums whitespace-nowrap">
-            {new Date(event.timestamp).toLocaleTimeString()}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Relative time — counts up from "just now", proving the event just arrived */}
+            <motion.span
+              key={relativeTime}
+              initial={{ opacity: 0.6 }}
+              animate={{ opacity: 1 }}
+              className="text-xs text-zinc-500 tabular-nums"
+            >
+              {relativeTime}
+            </motion.span>
+          </div>
         </div>
         {summary() && (
-          <p className="mt-0.5 truncate text-xs text-zinc-400">{summary()}</p>
+          <p className="mt-0.5 text-xs text-zinc-400">{summary()}</p>
         )}
-        {event.txHash && (
-          <a
-            href={`https://shannon-explorer.somnia.network/tx/${event.txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-0.5 block truncate font-mono text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-          >
-            {event.txHash.slice(0, 14)}…
-          </a>
-        )}
+        <div className="mt-1 flex items-center gap-3">
+          {event.txHash && (
+            <a
+              href={`https://shannon-explorer.somnia.network/tx/${event.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs text-zinc-600 hover:text-zinc-400 transition-colors truncate"
+            >
+              {event.txHash.slice(0, 14)}…
+            </a>
+          )}
+          <span className="text-xs text-zinc-700 italic">via WebSocket push</span>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-export function WillExecutionFeed({ events }: Props) {
+export function WillExecutionFeed({ events, eventCount }: Props) {
   return (
     <section className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-white">Live Event Feed</h2>
-        <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-xs text-zinc-300">
-          Somnia Reactivity
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-white">Live Event Feed</h2>
+          <span className="rounded-full bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400">
+            Somnia Reactivity
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {eventCount > 0 && (
+            <motion.span
+              key={eventCount}
+              initial={{ scale: 1.3, color: "#34d399" }}
+              animate={{ scale: 1, color: "#71717a" }}
+              className="text-xs tabular-nums font-mono"
+            >
+              {eventCount} event{eventCount !== 1 ? "s" : ""}
+            </motion.span>
+          )}
+          <span className="text-xs text-zinc-600 italic">no polling</span>
+        </div>
       </div>
 
       <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
         {events.length === 0 ? (
-          <p className="text-sm text-zinc-500 italic py-4 text-center">
-            Waiting for on-chain events…
-          </p>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 py-8 text-center">
+            <p className="text-sm text-zinc-500">Waiting for on-chain events…</p>
+            <p className="text-xs text-zinc-700 mt-1">
+              Events will appear here instantly when they land on Somnia
+            </p>
+          </div>
         ) : (
           <AnimatePresence initial={false}>
             {events.map((e) => (
