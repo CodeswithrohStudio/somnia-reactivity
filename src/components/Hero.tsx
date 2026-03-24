@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import Hls from "hls.js";
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 const VIDEO_SRC = "https://stream.mux.com/T6oQJQ02cQ6N01TR6iHwZkKFkbepS34dkkIc9iukgy400g.m3u8";
 const POSTER = "https://images.unsplash.com/photo-1647356191320-d7a1f80ca777?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5JTIwbmV1cmFsJTIwbmV0d29ya3xlbnwxfHx8fDE3Njg5NzIyNTV8MA&ixlib=rb-4.1.0&q=80&w=1080";
@@ -30,19 +30,6 @@ function Navbar({ onGetStarted }: { onGetStarted: () => void }) {
         <circle cx="12" cy="12" r="2" fill="white" />
       </svg>
 
-      {/* Center nav */}
-      <div className="hidden md:flex items-center gap-8">
-        {["Products", "How it Works", "Resources", "Pricing"].map((item) => (
-          <button
-            key={item}
-            className="flex items-center gap-1 text-sm font-medium text-white/80 hover:text-white transition-colors"
-            style={{ fontFamily: "'Instrument Sans', sans-serif" }}
-          >
-            {item}
-            {item === "Products" && <ChevronDown size={14} />}
-          </button>
-        ))}
-      </div>
 
       {/* Right */}
       <div className="flex items-center gap-3">
